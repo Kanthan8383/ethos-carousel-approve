@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ethos — Approve carousel</title>
+  <style>
+    :root { --purple:#6D28D9; --dark:#0A0A0F; --off:#F5F2EC; --gold:#B8945A; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--off); color:var(--dark);
+      font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; line-height:1.5; }
+    .wrap { max-width:520px; margin:0 auto; padding:24px 16px; }
+    .brand { font-weight:800; letter-spacing:.5px; color:var(--purple); font-size:13px;
+      text-transform:uppercase; margin-bottom:16px; }
+    .card { background:#fff; border:1px solid #e7e2d8; border-radius:8px; padding:20px; }
+    h2 { margin:0 0 4px; font-size:22px; }
+    h3 { margin:18px 0 6px; font-size:15px; }
+    p { margin:0 0 12px; }
+    .muted { color:#555; }
+    pre { white-space:pre-wrap; background:var(--off); padding:12px; border-radius:6px;
+      font-family:inherit; font-size:13px; margin:0; }
+    img { width:100%; display:block; margin:8px 0; border:1px solid #e7e2d8; border-radius:4px; }
+    .btns { display:flex; gap:8px; flex-wrap:wrap; margin:16px 0; }
+    button { flex:1 1 30%; padding:14px; border:0; border-radius:6px; color:#fff;
+      font-size:15px; font-weight:700; cursor:pointer; }
+    .approve { background:#1a7f37; } .reject { background:#b42318; } .regen { background:var(--purple); }
+    button[disabled] { opacity:.5; cursor:default; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">Ethos Synergy Solutions</div>
+    <div class="card" id="app"><p class="muted">Loading…</p></div>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const id = params.get("id");
+    const token = params.get("token");
+    // Deploy step replaces https://svzzkesrrvwvpkbaaxlm.supabase.co/functions/v1/decision with the absolute Supabase function URL when the
+    // page is hosted off-origin (e.g. GoHighLevel). Left intact, it falls back to same-origin.
+    const FN_INJECTED = "https://svzzkesrrvwvpkbaaxlm.supabase.co/functions/v1/decision";
+    const FN = FN_INJECTED.startsWith("__") ? location.origin + "/functions/v1/decision" : FN_INJECTED;
+    const app = document.getElementById("app");
+    const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;" }[c]));
+    const qs = `id=${encodeURIComponent(id || "")}&token=${encodeURIComponent(token || "")}`;
+    let busy = false;
+
+    async function load() {
+      if (!id || !token) { app.innerHTML = "<h2>Invalid link</h2><p class='muted'>This link is missing its details.</p>"; return; }
+      let d;
+      try { d = await (await fetch(`${FN}?${qs}`)).json(); }
+      catch (e) { app.innerHTML = "<h2>Couldn't load</h2><p class='muted'>Please try again.</p>"; return; }
+      if (!d.ok) { app.innerHTML = `<h2>Link problem</h2><p class='muted'>${esc(d.error || "")}</p>`; return; }
+      if (d.status !== "pending_approval") {
+        app.innerHTML = `<h2>Already handled</h2><p class='muted'>This carousel was already ${esc(d.status)}. No further action needed.</p>`;
+        return;
+      }
+      const slides = (d.media_urls || []).map((u, i) => `<img src="${esc(u)}" alt="slide ${i + 1}">`).join("");
+      app.innerHTML = `
+        <h2>Review carousel</h2>
+        <p class="muted">Pick an action. Nothing publishes until you tap.</p>
+        <p><b>Topic:</b> ${esc(d.topic)}</p>
+        <div class="btns">
+          <button class="approve" data-a="approve">Approve</button>
+          <button class="reject" data-a="reject">Reject</button>
+          <button class="regen" data-a="regenerate">Regenerate</button>
+        </div>
+        <h3>Caption</h3><pre>${esc(d.caption)}</pre>
+        <h3>Slides</h3>${slides}`;
+      app.querySelectorAll("button[data-a]").forEach((b) => (b.onclick = () => act(b.dataset.a)));
+    }
+
+    async function act(action) {
+      if (busy) return; busy = true;
+      app.querySelectorAll("button").forEach((b) => (b.disabled = true));
+      let d;
+      try { d = await (await fetch(`${FN}?${qs}&action=${action}`, { method: "POST" })).json(); }
+      catch (e) { app.innerHTML = "<h2>Something went wrong</h2><p class='muted'>Please try again.</p>"; busy = false; return; }
+      if (d.ok) app.innerHTML = `<h2>${esc(d.heading)}</h2><p>${esc(d.message)}</p>`;
+      else app.innerHTML = `<h2>Already handled</h2><p class="muted">${esc(d.message || d.error || "")}</p>`;
+    }
+
+    load();
+  </script>
+</body>
+</html>
