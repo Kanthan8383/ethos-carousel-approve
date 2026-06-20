@@ -36,13 +36,14 @@
     const params = new URLSearchParams(location.search);
     const id = params.get("id");
     const token = params.get("token");
+    const type = params.get("type") || "carousel";
     // Deploy step replaces https://svzzkesrrvwvpkbaaxlm.supabase.co/functions/v1/decision with the absolute Supabase function URL when the
     // page is hosted off-origin (e.g. GoHighLevel). Left intact, it falls back to same-origin.
     const FN_INJECTED = "https://svzzkesrrvwvpkbaaxlm.supabase.co/functions/v1/decision";
     const FN = FN_INJECTED.startsWith("__") ? location.origin + "/functions/v1/decision" : FN_INJECTED;
     const app = document.getElementById("app");
     const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;" }[c]));
-    const qs = `id=${encodeURIComponent(id || "")}&token=${encodeURIComponent(token || "")}`;
+    const qs = `id=${encodeURIComponent(id || "")}&token=${encodeURIComponent(token || "")}&type=${encodeURIComponent(type)}`;
     let busy = false;
 
     async function load() {
@@ -51,6 +52,30 @@
       try { d = await (await fetch(`${FN}?${qs}`)).json(); }
       catch (e) { app.innerHTML = "<h2>Couldn't load</h2><p class='muted'>Please try again.</p>"; return; }
       if (!d.ok) { app.innerHTML = `<h2>Link problem</h2><p class='muted'>${esc(d.error || "")}</p>`; return; }
+
+      if (type === "plan") {
+        if (d.status !== "pending_topic") {
+          app.innerHTML = `<h2>Already handled</h2><p class='muted'>This topic was already ${esc(d.status)}. No further action needed.</p>`;
+          return;
+        }
+        const b = d.brief || {};
+        const outlineHtml = Array.isArray(b.outline) ? (b.outline.length ? `<h3>Outline</h3><ul>${b.outline.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>` : "") : (typeof b.outline === "string" && b.outline ? `<h3>Outline</h3><pre>${esc(b.outline)}</pre>` : "");
+        app.innerHTML = `
+          <h2>Review topic proposal</h2>
+          <p class="muted">Approve to generate a carousel, or skip to get a different topic.</p>
+          <p><b>Topic:</b> ${esc(b.topic)}</p>
+          <p><b>Subject:</b> ${esc(b.subject)}</p>
+          <p><b>Angle:</b> ${esc(b.angle)}</p>
+          <p><b>Hook archetype:</b> ${esc(b.hook_archetype)}</p>
+          ${outlineHtml}
+          <div class="btns">
+            <button class="approve" data-a="approve">Approve</button>
+            <button class="reject" data-a="skip">Skip</button>
+          </div>`;
+        app.querySelectorAll("button[data-a]").forEach((btn) => (btn.onclick = () => act(btn.dataset.a)));
+        return;
+      }
+
       if (d.status !== "pending_approval") {
         app.innerHTML = `<h2>Already handled</h2><p class='muted'>This carousel was already ${esc(d.status)}. No further action needed.</p>`;
         return;
