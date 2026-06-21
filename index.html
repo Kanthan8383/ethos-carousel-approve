@@ -25,6 +25,10 @@
       font-size:15px; font-weight:700; cursor:pointer; }
     .approve { background:#1a7f37; } .reject { background:#b42318; } .regen { background:var(--purple); }
     button[disabled] { opacity:.5; cursor:default; }
+    label { display:block; margin:10px 0 0; font-size:13px; font-weight:600; }
+    textarea { width:100%; font:inherit; padding:8px; border:1px solid #ccc; border-radius:6px; margin-top:4px; min-height:46px; }
+    h4 { margin:14px 0 0; font-size:14px; }
+    .err { color:#b42318; font-weight:600; }
   </style>
 </head>
 <body>
@@ -80,6 +84,7 @@
         app.innerHTML = `<h2>Already handled</h2><p class='muted'>This carousel was already ${esc(d.status)}. No further action needed.</p>`;
         return;
       }
+      const car = d.slides || {};
       const slides = (d.media_urls || []).map((u, i) => `<img src="${esc(u)}" alt="slide ${i + 1}">`).join("");
       app.innerHTML = `
         <h2>Review carousel</h2>
@@ -90,9 +95,12 @@
           <button class="reject" data-a="reject">Reject</button>
           <button class="regen" data-a="regenerate">Regenerate</button>
         </div>
+        <p><button class="regen" id="editBtn" style="width:100%">Edit copy</button></p>
         <h3>Caption</h3><pre>${esc(d.caption)}</pre>
         <h3>Slides</h3>${slides}`;
       app.querySelectorAll("button[data-a]").forEach((b) => (b.onclick = () => act(b.dataset.a)));
+      const editBtn = document.getElementById("editBtn");
+      if (editBtn) editBtn.onclick = () => showEdit(car);
     }
 
     async function act(action) {
@@ -103,6 +111,68 @@
       catch (e) { app.innerHTML = "<h2>Something went wrong</h2><p class='muted'>Please try again.</p>"; busy = false; return; }
       if (d.ok) app.innerHTML = `<h2>${esc(d.heading)}</h2><p>${esc(d.message)}</p>`;
       else app.innerHTML = `<h2>Already handled</h2><p class="muted">${esc(d.message || d.error || "")}</p>`;
+    }
+
+    function showEdit(car) {
+      const slides = Array.isArray(car.slides) ? car.slides : [];
+      const slideFields = slides.map((s, i) => `
+        <h4>Value slide ${i + 1}</h4>
+        <label>Idea<textarea data-slide="${i}" data-f="idea">${esc(s.idea)}</textarea></label>
+        <label>Payoff<textarea data-slide="${i}" data-f="payoff">${esc(s.payoff)}</textarea></label>`).join("");
+      app.innerHTML = `
+        <h2>Edit copy</h2>
+        <p class="muted">Edit the text, then save. The slides re-render and you'll get them back to approve before anything publishes.</p>
+        <h4>Hook headline</h4>
+        <label><textarea id="f-headline">${esc(car.hook && car.hook.headline)}</textarea></label>
+        ${slideFields}
+        <h4>CTA line</h4>
+        <label><textarea id="f-cta">${esc(car.cta && car.cta.line)}</textarea></label>
+        <h4>Caption</h4>
+        <label><textarea id="f-caption" style="min-height:120px">${esc(car.caption)}</textarea></label>
+        <p id="editErr" class="err"></p>
+        <div class="btns">
+          <button class="approve" id="saveBtn">Save & re-render</button>
+          <button class="reject" id="cancelBtn">Cancel</button>
+        </div>`;
+      document.getElementById("cancelBtn").onclick = () => load();
+      document.getElementById("saveBtn").onclick = () => saveEdit(car);
+    }
+
+    async function saveEdit(car) {
+      if (busy) return;
+      const edited = JSON.parse(JSON.stringify(car || {}));
+      edited.hook = edited.hook || {}; edited.cta = edited.cta || {};
+      const val = (id) => (document.getElementById(id).value || "").trim();
+      edited.hook.headline = val("f-headline");
+      edited.cta.line = val("f-cta");
+      edited.caption = val("f-caption");
+      edited.slides = (Array.isArray(edited.slides) ? edited.slides : []).map((s, i) => ({
+        ...s,
+        idea: (document.querySelector(`[data-slide="${i}"][data-f="idea"]`).value || "").trim(),
+        payoff: (document.querySelector(`[data-slide="${i}"][data-f="payoff"]`).value || "").trim(),
+      }));
+      const errEl = document.getElementById("editErr");
+      const missing = !edited.hook.headline || !edited.cta.line || !edited.caption ||
+        edited.slides.length === 0 || edited.slides.some((s) => !s.idea || !s.payoff);
+      if (missing) { errEl.textContent = "Every field is required — please fill the empty ones."; return; }
+      busy = true;
+      app.querySelectorAll("button").forEach((b) => (b.disabled = true));
+      let d;
+      try {
+        d = await (await fetch(`${FN}?${qs}&action=edit`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ carousel: edited }),
+        })).json();
+      } catch (e) {
+        app.innerHTML = "<h2>Something went wrong</h2><p class='muted'>Please try again.</p>"; busy = false; return;
+      }
+      if (d.ok) { app.innerHTML = `<h2>${esc(d.heading)}</h2><p>${esc(d.message)}</p>`; }
+      else {
+        busy = false;
+        app.querySelectorAll("button").forEach((b) => (b.disabled = false));
+        errEl.textContent = d.error || d.message || "Could not save.";
+      }
     }
 
     load();
