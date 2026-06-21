@@ -117,6 +117,7 @@
       const slides = Array.isArray(car.slides) ? car.slides : [];
       const slideFields = slides.map((s, i) => `
         <h4>Value slide ${i + 1}</h4>
+        <label>Title<textarea data-slide="${i}" data-f="title">${esc(s.title)}</textarea></label>
         <label>Idea<textarea data-slide="${i}" data-f="idea">${esc(s.idea)}</textarea></label>
         <label>Payoff<textarea data-slide="${i}" data-f="payoff">${esc(s.payoff)}</textarea></label>`).join("");
       app.innerHTML = `
@@ -148,13 +149,14 @@
       edited.caption = val("f-caption");
       edited.slides = (Array.isArray(edited.slides) ? edited.slides : []).map((s, i) => ({
         ...s,
+        title: (document.querySelector(`[data-slide="${i}"][data-f="title"]`).value || "").trim(),
         idea: (document.querySelector(`[data-slide="${i}"][data-f="idea"]`).value || "").trim(),
         payoff: (document.querySelector(`[data-slide="${i}"][data-f="payoff"]`).value || "").trim(),
       }));
       const errEl = document.getElementById("editErr");
       const missing = !edited.hook.headline || !edited.cta.line || !edited.caption ||
-        edited.slides.length === 0 || edited.slides.some((s) => !s.idea || !s.payoff);
-      if (missing) { errEl.textContent = "Every field is required — please fill the empty ones."; return; }
+        edited.slides.length === 0 || edited.slides.some((s) => !s.title || !s.idea || !s.payoff);
+      if (missing) { errEl.textContent = "Every field is required. Please fill the empty ones."; return; }
       busy = true;
       app.querySelectorAll("button").forEach((b) => (b.disabled = true));
       let d;
